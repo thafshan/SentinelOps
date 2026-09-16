@@ -10,6 +10,7 @@ from app.schemas.vulnerability import (
     VulnerabilityResponse,
     VulnerabilityUpdate,
 )
+from app.services.audit import create_audit_log
 
 
 router = APIRouter(
@@ -45,6 +46,17 @@ def create_vulnerability(
     )
 
     db.add(vulnerability)
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="create",
+        entity_type="vulnerability",
+        entity_id=vulnerability.id,
+        description=f"Created vulnerability '{vulnerability.title}'.",
+    )
+
     db.commit()
     db.refresh(vulnerability)
 
@@ -132,6 +144,17 @@ def update_vulnerability(
     for field, value in update_data.items():
         setattr(vulnerability, field, value)
 
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="update",
+        entity_type="vulnerability",
+        entity_id=vulnerability.id,
+        description=f"Updated vulnerability '{vulnerability.title}'.",
+    )
+
     db.commit()
     db.refresh(vulnerability)
 
@@ -158,6 +181,17 @@ def delete_vulnerability(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Vulnerability not found",
         )
+
+    vulnerability_title = vulnerability.title
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="delete",
+        entity_type="vulnerability",
+        entity_id=vulnerability.id,
+        description=f"Deleted vulnerability '{vulnerability_title}'.",
+    )
 
     db.delete(vulnerability)
     db.commit()

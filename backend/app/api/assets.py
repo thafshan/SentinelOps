@@ -5,6 +5,7 @@ from app.api.dependencies import get_current_user, get_db
 from app.models.asset import Asset
 from app.models.user import User
 from app.schemas.asset import AssetCreate, AssetResponse, AssetUpdate
+from app.services.audit import create_audit_log
 
 
 router = APIRouter(
@@ -36,9 +37,22 @@ def create_asset(
                 detail="Asset owner not found",
             )
 
-    new_asset = Asset(**asset_data.model_dump())
+    new_asset = Asset(
+        **asset_data.model_dump(),
+    )
 
     db.add(new_asset)
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="create",
+        entity_type="asset",
+        entity_id=new_asset.id,
+        description=f"Created asset '{new_asset.name}'.",
+    )
+
     db.commit()
     db.refresh(new_asset)
 
@@ -85,6 +99,7 @@ def get_asset(
 
     return asset
 
+
 @router.put(
     "/{asset_id}",
     response_model=AssetResponse,
@@ -125,6 +140,17 @@ def update_asset(
     for field, value in update_data.items():
         setattr(asset, field, value)
 
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="update",
+        entity_type="asset",
+        entity_id=asset.id,
+        description=f"Updated asset '{asset.name}'.",
+    )
+
     db.commit()
     db.refresh(asset)
 
@@ -152,7 +178,18 @@ def delete_asset(
             detail="Asset not found",
         )
 
+    asset_name = asset.name
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="delete",
+        entity_type="asset",
+        entity_id=asset.id,
+        description=f"Deleted asset '{asset_name}'.",
+    )
+
     db.delete(asset)
     db.commit()
 
-    return None    
+    return None

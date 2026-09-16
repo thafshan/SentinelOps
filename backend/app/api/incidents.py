@@ -11,6 +11,8 @@ from app.schemas.incident import (
     IncidentResponse,
     IncidentUpdate,
 )
+from app.services.audit import create_audit_log
+
 
 router = APIRouter(
     prefix="/incidents",
@@ -71,6 +73,17 @@ def create_incident(
     )
 
     db.add(incident)
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="create",
+        entity_type="incident",
+        entity_id=incident.id,
+        description=f"Created incident '{incident.title}'.",
+    )
+
     db.commit()
     db.refresh(incident)
 
@@ -186,6 +199,17 @@ def update_incident(
     for field, value in update_data.items():
         setattr(incident, field, value)
 
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="update",
+        entity_type="incident",
+        entity_id=incident.id,
+        description=f"Updated incident '{incident.title}'.",
+    )
+
     db.commit()
     db.refresh(incident)
 
@@ -212,6 +236,17 @@ def delete_incident(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
         )
+
+    incident_title = incident.title
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="delete",
+        entity_type="incident",
+        entity_id=incident.id,
+        description=f"Deleted incident '{incident_title}'.",
+    )
 
     db.delete(incident)
     db.commit()

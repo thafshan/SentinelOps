@@ -11,6 +11,7 @@ from app.models.asset import Asset
 from app.models.vulnerability import Vulnerability
 from app.models.security_event import SecurityEvent
 from app.models.incident import Incident
+from app.models.audit_log import AuditLog
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

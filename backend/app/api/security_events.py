@@ -10,6 +10,7 @@ from app.schemas.security_event import (
     SecurityEventResponse,
     SecurityEventUpdate,
 )
+from app.services.audit import create_audit_log
 
 
 router = APIRouter(
@@ -45,6 +46,17 @@ def create_security_event(
     )
 
     db.add(event)
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="create",
+        entity_type="security_event",
+        entity_id=event.id,
+        description=f"Created security event '{event.event_type}'.",
+    )
+
     db.commit()
     db.refresh(event)
 
@@ -132,6 +144,17 @@ def update_security_event(
     for field, value in update_data.items():
         setattr(event, field, value)
 
+    db.flush()
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="update",
+        entity_type="security_event",
+        entity_id=event.id,
+        description=f"Updated security event '{event.event_type}'.",
+    )
+
     db.commit()
     db.refresh(event)
 
@@ -158,6 +181,17 @@ def delete_security_event(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Security event not found",
         )
+
+    event_type = event.event_type
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action="delete",
+        entity_type="security_event",
+        entity_id=event.id,
+        description=f"Deleted security event '{event_type}'.",
+    )
 
     db.delete(event)
     db.commit()
