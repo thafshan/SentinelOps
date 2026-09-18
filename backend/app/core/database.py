@@ -16,7 +16,10 @@ DATABASE_URL = URL.create(
     database=os.getenv("DB_NAME"),
 )
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"sslmode": "require"},
+)
 
 SessionLocal = sessionmaker(
     autocommit=False,
