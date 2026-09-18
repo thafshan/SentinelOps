@@ -27,13 +27,32 @@ function SecurityEvents() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
+  const [showForm, setShowForm] = useState(false)
+  const [editingEvent, setEditingEvent] =
+    useState<SecurityEvent | null>(null)
+  const [selectedEvent, setSelectedEvent] =
+    useState<SecurityEvent | null>(null)
+
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const [assetId, setAssetId] = useState("")
+  const [eventType, setEventType] = useState("failed_login")
+  const [severity, setSeverity] = useState("medium")
+  const [sourceIp, setSourceIp] = useState("")
+  const [message, setMessage] = useState("")
+  const [status, setStatus] = useState("new")
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [eventsResponse, assetsResponse] = await Promise.all([
-          api.get("/security-events/"),
-          api.get("/assets/"),
-        ])
+        setError("")
+
+        const [eventsResponse, assetsResponse] =
+          await Promise.all([
+            api.get("/security-events/"),
+            api.get("/assets/"),
+          ])
 
         setEvents(eventsResponse.data)
         setAssets(assetsResponse.data)
@@ -47,8 +66,8 @@ function SecurityEvents() {
     fetchData()
   }, [])
 
-  const getSeverityStyle = (severity: string) => {
-    switch (severity.toLowerCase()) {
+  const getSeverityStyle = (value: string) => {
+    switch (value.toLowerCase()) {
       case "critical":
         return "border-red-500/30 bg-red-500/10 text-red-400"
 
@@ -66,8 +85,8 @@ function SecurityEvents() {
     }
   }
 
-  const getStatusStyle = (status: string) => {
-    switch (status.toLowerCase()) {
+  const getStatusStyle = (value: string) => {
+    switch (value.toLowerCase()) {
       case "resolved":
         return "border-green-400/20 bg-green-400/10 text-green-400"
 
@@ -82,16 +101,174 @@ function SecurityEvents() {
     }
   }
 
-  const getAsset = (assetId: number) => {
-    return assets.find((asset) => asset.id === assetId)
+  const getAsset = (id: number) => {
+    return assets.find((asset) => asset.id === id)
+  }
+
+  const resetForm = () => {
+    setAssetId("")
+    setEventType("failed_login")
+    setSeverity("medium")
+    setSourceIp("")
+    setMessage("")
+    setStatus("new")
+    setShowForm(false)
+    setEditingEvent(null)
+  }
+
+  const openCreateForm = () => {
+    setError("")
+    resetForm()
+    setShowForm(true)
+  }
+
+  const startEditing = (event: SecurityEvent) => {
+    setError("")
+    setEditingEvent(event)
+    setShowForm(false)
+
+    setAssetId(String(event.asset_id))
+    setEventType(event.event_type)
+    setSeverity(event.severity)
+    setSourceIp(event.source_ip || "")
+    setMessage(event.message)
+    setStatus(event.status)
+  }
+
+  const handleCreate = async (
+    formEvent: React.FormEvent<HTMLFormElement>,
+  ) => {
+    formEvent.preventDefault()
+
+    if (!assetId) {
+      setError("Please select an asset.")
+      return
+    }
+
+    if (!message.trim()) {
+      setError("Please enter an event message.")
+      return
+    }
+
+    try {
+      setError("")
+      setSaving(true)
+
+      const response = await api.post("/security-events/", {
+        asset_id: Number(assetId),
+        event_type: eventType,
+        severity,
+        source_ip: sourceIp || null,
+        message,
+        status,
+      })
+
+      setEvents((current) => [
+        response.data,
+        ...current,
+      ])
+
+      resetForm()
+    } catch {
+      setError("Unable to create security event.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleUpdate = async (
+    formEvent: React.FormEvent<HTMLFormElement>,
+  ) => {
+    formEvent.preventDefault()
+
+    if (!editingEvent) {
+      return
+    }
+
+    if (!assetId) {
+      setError("Please select an asset.")
+      return
+    }
+
+    if (!message.trim()) {
+      setError("Please enter an event message.")
+      return
+    }
+
+    try {
+      setError("")
+      setSaving(true)
+
+      const response = await api.put(
+        `/security-events/${editingEvent.id}`,
+        {
+          asset_id: Number(assetId),
+          event_type: eventType,
+          severity,
+          source_ip: sourceIp || null,
+          message,
+          status,
+        },
+      )
+
+      setEvents((current) =>
+        current.map((event) =>
+          event.id === editingEvent.id
+            ? response.data
+            : event,
+        ),
+      )
+
+      resetForm()
+    } catch {
+      setError("Unable to update security event.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (event: SecurityEvent) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete Event #${event.id}?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setError("")
+      setDeletingId(event.id)
+
+      await api.delete(`/security-events/${event.id}`)
+
+      setEvents((current) =>
+        current.filter((item) => item.id !== event.id),
+      )
+
+      if (selectedEvent?.id === event.id) {
+        setSelectedEvent(null)
+      }
+
+      if (editingEvent?.id === event.id) {
+        resetForm()
+      }
+    } catch {
+      setError("Unable to delete security event.")
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const activeEvents = events.filter(
-    (event) => event.status.toLowerCase() !== "resolved",
+    (event) =>
+      event.status.toLowerCase() !== "resolved",
   ).length
 
   const criticalHighEvents = events.filter((event) =>
-    ["critical", "high"].includes(event.severity.toLowerCase()),
+    ["critical", "high"].includes(
+      event.severity.toLowerCase(),
+    ),
   ).length
 
   return (
@@ -114,14 +291,251 @@ function SecurityEvents() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start rounded-full border border-red-400/20 bg-red-400/5 px-3 py-1.5 sm:self-auto">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2 rounded-full border border-red-400/20 bg-red-400/5 px-3 py-1.5">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
 
-          <span className="text-xs font-medium uppercase tracking-wider text-red-300">
-            Live Events
-          </span>
+            <span className="text-xs font-medium uppercase tracking-wider text-red-300">
+              Live Events
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={openCreateForm}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"
+          >
+            Add Security Event
+          </button>
         </div>
       </div>
+
+      {/* Form */}
+      {(showForm || editingEvent) && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-semibold text-white">
+                {editingEvent
+                  ? "Edit Security Event"
+                  : "Add New Security Event"}
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {editingEvent
+                  ? `Update Event #${editingEvent.id}.`
+                  : "Record a detected security event."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={saving}
+              className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <form
+            className="mt-6"
+            onSubmit={
+              editingEvent
+                ? handleUpdate
+                : handleCreate
+            }
+          >
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {/* Asset */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Asset
+                </label>
+
+                <select
+                  value={assetId}
+                  onChange={(event) =>
+                    setAssetId(event.target.value)
+                  }
+                  required
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="">Select an asset</option>
+
+                  {assets.map((asset) => (
+                    <option
+                      key={asset.id}
+                      value={asset.id}
+                    >
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Event Type */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Event Type
+                </label>
+
+                <select
+                  value={eventType}
+                  onChange={(event) =>
+                    setEventType(event.target.value)
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="failed_login">
+                    Failed Login
+                  </option>
+
+                  <option value="successful_login">
+                    Successful Login
+                  </option>
+
+                  <option value="brute_force">
+                    Brute Force
+                  </option>
+
+                  <option value="suspicious_ip">
+                    Suspicious IP
+                  </option>
+
+                  <option value="privilege_escalation">
+                    Privilege Escalation
+                  </option>
+
+                  <option value="malware_detected">
+                    Malware Detected
+                  </option>
+
+                  <option value="unauthorized_access">
+                    Unauthorized Access
+                  </option>
+                </select>
+              </div>
+
+              {/* Severity */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Severity
+                </label>
+
+                <select
+                  value={severity}
+                  onChange={(event) =>
+                    setSeverity(event.target.value)
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="critical">
+                    Critical
+                  </option>
+
+                  <option value="high">
+                    High
+                  </option>
+
+                  <option value="medium">
+                    Medium
+                  </option>
+
+                  <option value="low">
+                    Low
+                  </option>
+                </select>
+              </div>
+
+              {/* Source IP */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Source IP
+                </label>
+
+                <input
+                  type="text"
+                  value={sourceIp}
+                  onChange={(event) =>
+                    setSourceIp(event.target.value)
+                  }
+                  placeholder="e.g. 185.220.101.45"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Status
+                </label>
+
+                <select
+                  value={status}
+                  onChange={(event) =>
+                    setStatus(event.target.value)
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="new">New</option>
+
+                  <option value="investigating">
+                    Investigating
+                  </option>
+
+                  <option value="resolved">
+                    Resolved
+                  </option>
+                </select>
+              </div>
+
+              {/* Message */}
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Event Message
+                </label>
+
+                <textarea
+                  value={message}
+                  onChange={(event) =>
+                    setMessage(event.target.value)
+                  }
+                  placeholder="Describe the detected security activity..."
+                  rows={5}
+                  required
+                  className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 border-t border-slate-800 pt-6">
+              <button
+                type="button"
+                onClick={resetForm}
+                disabled={saving}
+                className="rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving
+                  ? editingEvent
+                    ? "Saving..."
+                    : "Creating..."
+                  : editingEvent
+                    ? "Save Changes"
+                    : "Create Security Event"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -238,14 +652,15 @@ function SecurityEvents() {
                   <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
 
                   <span className="text-xs font-medium text-slate-400">
-                    {events.length} event{events.length !== 1 ? "s" : ""}
+                    {events.length} event
+                    {events.length !== 1 ? "s" : ""}
                   </span>
                 </div>
               </div>
 
               {/* Responsive Table */}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
+                <table className="w-full min-w-[1200px] text-left text-sm">
                   <thead className="border-b border-slate-800">
                     <tr>
                       <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -271,13 +686,18 @@ function SecurityEvents() {
                       <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Detected
                       </th>
+
+                      <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {events.map((event) => {
                       const asset = getAsset(event.asset_id)
-                      const severity = event.severity.toLowerCase()
+                      const severity =
+                        event.severity.toLowerCase()
 
                       return (
                         <tr
@@ -309,7 +729,10 @@ function SecurityEvents() {
 
                               <div className="min-w-0">
                                 <p className="font-semibold capitalize text-white">
-                                  {event.event_type.replaceAll("_", " ")}
+                                  {event.event_type.replaceAll(
+                                    "_",
+                                    " ",
+                                  )}
                                 </p>
 
                                 <p className="mt-1 max-w-sm truncate text-xs text-slate-500">
@@ -326,11 +749,13 @@ function SecurityEvents() {
                           {/* Asset */}
                           <td className="px-6 py-5">
                             <p className="font-medium text-slate-200">
-                              {asset?.name || `Asset #${event.asset_id}`}
+                              {asset?.name ||
+                                `Asset #${event.asset_id}`}
                             </p>
 
                             <p className="mt-1 text-xs text-slate-500">
-                              {asset?.hostname || `Asset ID ${event.asset_id}`}
+                              {asset?.hostname ||
+                                `Asset ID ${event.asset_id}`}
                             </p>
                           </td>
 
@@ -365,7 +790,10 @@ function SecurityEvents() {
                             >
                               <span className="h-1.5 w-1.5 rounded-full bg-current" />
 
-                              {event.status.replaceAll("_", " ")}
+                              {event.status.replaceAll(
+                                "_",
+                                " ",
+                              )}
                             </span>
                           </td>
 
@@ -383,6 +811,46 @@ function SecurityEvents() {
                               ).toLocaleTimeString()}
                             </p>
                           </td>
+
+                          {/* Actions */}
+                          <td className="px-6 py-5">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedEvent(event)
+                                }
+                                className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-blue-400"
+                              >
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  startEditing(event)
+                                }
+                                className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-400"
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  deletingId === event.id
+                                }
+                                onClick={() =>
+                                  handleDelete(event)
+                                }
+                                className="rounded-md border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingId === event.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}
@@ -391,6 +859,121 @@ function SecurityEvents() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* View Modal */}
+      {selectedEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-cyan-400">
+                  Security Event Details
+                </p>
+
+                <h3 className="mt-2 text-2xl font-bold capitalize text-white">
+                  {selectedEvent.event_type.replaceAll(
+                    "_",
+                    " ",
+                  )}
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Event #{selectedEvent.id}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Asset
+                </p>
+
+                <p className="mt-1 text-sm text-white">
+                  {getAsset(selectedEvent.asset_id)?.name ||
+                    `Asset #${selectedEvent.asset_id}`}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Event Type
+                </p>
+
+                <p className="mt-1 text-sm capitalize text-white">
+                  {selectedEvent.event_type.replaceAll(
+                    "_",
+                    " ",
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Severity
+                </p>
+
+                <p className="mt-1 text-sm capitalize text-white">
+                  {selectedEvent.severity}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Status
+                </p>
+
+                <p className="mt-1 text-sm capitalize text-white">
+                  {selectedEvent.status.replaceAll(
+                    "_",
+                    " ",
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Source IP
+                </p>
+
+                <p className="mt-1 font-mono text-sm text-cyan-300">
+                  {selectedEvent.source_ip || "Unknown"}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Detected
+                </p>
+
+                <p className="mt-1 text-sm text-white">
+                  {new Date(
+                    selectedEvent.detected_at,
+                  ).toLocaleString()}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 sm:col-span-2">
+                <p className="text-xs text-slate-500">
+                  Message
+                </p>
+
+                <p className="mt-1 text-sm leading-6 text-slate-300">
+                  {selectedEvent.message}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

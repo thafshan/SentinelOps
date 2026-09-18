@@ -122,3 +122,26 @@ def get_my_profile(
         "organization_name": current_user.organization.name,
     }
 
+@router.get("/users")
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    users = (
+        db.query(User)
+        .filter(
+            User.organization_id == current_user.organization_id,
+            User.is_active == True,
+        )
+        .order_by(User.full_name.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+        }
+        for user in users
+    ]

@@ -28,9 +28,28 @@ function Vulnerabilities() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
+  const [showForm, setShowForm] = useState(false)
+  const [editingVulnerability, setEditingVulnerability] =
+    useState<Vulnerability | null>(null)
+  const [selectedVulnerability, setSelectedVulnerability] =
+    useState<Vulnerability | null>(null)
+
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const [assetId, setAssetId] = useState("")
+  const [cveId, setCveId] = useState("")
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [severity, setSeverity] = useState("medium")
+  const [cvssScore, setCvssScore] = useState("")
+  const [status, setStatus] = useState("open")
+
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setError("")
+
         const [vulnerabilitiesResponse, assetsResponse] =
           await Promise.all([
             api.get("/vulnerabilities/"),
@@ -49,8 +68,8 @@ function Vulnerabilities() {
     fetchData()
   }, [])
 
-  const getSeverityStyle = (severity: string) => {
-    switch (severity.toLowerCase()) {
+  const getSeverityStyle = (value: string) => {
+    switch (value.toLowerCase()) {
       case "critical":
         return "border-red-500/30 bg-red-500/10 text-red-400"
 
@@ -68,8 +87,8 @@ function Vulnerabilities() {
     }
   }
 
-  const getStatusStyle = (status: string) => {
-    switch (status.toLowerCase()) {
+  const getStatusStyle = (value: string) => {
+    switch (value.toLowerCase()) {
       case "resolved":
         return "border-green-400/20 bg-green-400/10 text-green-400"
 
@@ -84,8 +103,171 @@ function Vulnerabilities() {
     }
   }
 
-  const getAsset = (assetId: number) => {
-    return assets.find((asset) => asset.id === assetId)
+  const getAsset = (id: number) => {
+    return assets.find((asset) => asset.id === id)
+  }
+
+  const resetForm = () => {
+    setAssetId("")
+    setCveId("")
+    setTitle("")
+    setDescription("")
+    setSeverity("medium")
+    setCvssScore("")
+    setStatus("open")
+    setShowForm(false)
+    setEditingVulnerability(null)
+  }
+
+  const openCreateForm = () => {
+    setError("")
+    resetForm()
+    setShowForm(true)
+  }
+
+  const startEditing = (vulnerability: Vulnerability) => {
+    setError("")
+    setEditingVulnerability(vulnerability)
+    setShowForm(false)
+
+    setAssetId(String(vulnerability.asset_id))
+    setCveId(vulnerability.cve_id || "")
+    setTitle(vulnerability.title)
+    setDescription(vulnerability.description || "")
+    setSeverity(vulnerability.severity)
+    setCvssScore(
+      vulnerability.cvss_score !== null
+        ? String(vulnerability.cvss_score)
+        : "",
+    )
+    setStatus(vulnerability.status)
+  }
+
+  const handleCreate = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
+
+    if (!assetId) {
+      setError("Please select an asset.")
+      return
+    }
+
+    try {
+      setError("")
+      setSaving(true)
+
+      const response = await api.post("/vulnerabilities/", {
+        asset_id: Number(assetId),
+        cve_id: cveId || null,
+        title,
+        description: description || null,
+        severity,
+        cvss_score: cvssScore ? Number(cvssScore) : null,
+        status,
+      })
+
+      setVulnerabilities((current) => [
+        response.data,
+        ...current,
+      ])
+
+      resetForm()
+    } catch {
+      setError("Unable to create vulnerability.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleUpdate = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
+
+    if (!editingVulnerability) {
+      return
+    }
+
+    if (!assetId) {
+      setError("Please select an asset.")
+      return
+    }
+
+    try {
+      setError("")
+      setSaving(true)
+
+      const response = await api.put(
+        `/vulnerabilities/${editingVulnerability.id}`,
+        {
+          asset_id: Number(assetId),
+          cve_id: cveId || null,
+          title,
+          description: description || null,
+          severity,
+          cvss_score: cvssScore ? Number(cvssScore) : null,
+          status,
+        },
+      )
+
+      setVulnerabilities((current) =>
+        current.map((vulnerability) =>
+          vulnerability.id === editingVulnerability.id
+            ? response.data
+            : vulnerability,
+        ),
+      )
+
+      resetForm()
+    } catch {
+      setError("Unable to update vulnerability.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (
+    vulnerability: Vulnerability,
+  ) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${vulnerability.title}"?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setError("")
+      setDeletingId(vulnerability.id)
+
+      await api.delete(
+        `/vulnerabilities/${vulnerability.id}`,
+      )
+
+      setVulnerabilities((current) =>
+        current.filter(
+          (item) => item.id !== vulnerability.id,
+        ),
+      )
+
+      if (
+        selectedVulnerability?.id === vulnerability.id
+      ) {
+        setSelectedVulnerability(null)
+      }
+
+      if (
+        editingVulnerability?.id === vulnerability.id
+      ) {
+        resetForm()
+      }
+    } catch {
+      setError("Unable to delete vulnerability.")
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const openVulnerabilities = vulnerabilities.filter(
@@ -121,14 +303,220 @@ function Vulnerabilities() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start rounded-full border border-red-400/20 bg-red-400/5 px-3 py-1.5 sm:self-auto">
-          <span className="h-2 w-2 rounded-full bg-red-400" />
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2 rounded-full border border-red-400/20 bg-red-400/5 px-3 py-1.5">
+            <span className="h-2 w-2 rounded-full bg-red-400" />
 
-          <span className="text-xs font-medium uppercase tracking-wider text-red-300">
-            Vulnerability Management
-          </span>
+            <span className="text-xs font-medium uppercase tracking-wider text-red-300">
+              Vulnerability Management
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={openCreateForm}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"
+          >
+            Add Vulnerability
+          </button>
         </div>
       </div>
+
+      {/* Form */}
+      {(showForm || editingVulnerability) && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-semibold text-white">
+                {editingVulnerability
+                  ? "Edit Vulnerability"
+                  : "Add New Vulnerability"}
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {editingVulnerability
+                  ? `Update ${editingVulnerability.title}.`
+                  : "Record a new security finding."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={saving}
+              className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <form
+            className="mt-6"
+            onSubmit={
+              editingVulnerability
+                ? handleUpdate
+                : handleCreate
+            }
+          >
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Asset
+                </label>
+
+                <select
+                  value={assetId}
+                  onChange={(event) =>
+                    setAssetId(event.target.value)
+                  }
+                  required
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="">Select an asset</option>
+
+                  {assets.map((asset) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  CVE ID
+                </label>
+
+                <input
+                  type="text"
+                  value={cveId}
+                  onChange={(event) =>
+                    setCveId(event.target.value)
+                  }
+                  placeholder="e.g. CVE-2026-12345"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Title
+                </label>
+
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(event.target.value)
+                  }
+                  placeholder="e.g. Remote Code Execution in Web Application"
+                  required
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Severity
+                </label>
+
+                <select
+                  value={severity}
+                  onChange={(event) =>
+                    setSeverity(event.target.value)
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  CVSS Score
+                </label>
+
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value={cvssScore}
+                  onChange={(event) =>
+                    setCvssScore(event.target.value)
+                  }
+                  placeholder="e.g. 9.8"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Status
+                </label>
+
+                <select
+                  value={status}
+                  onChange={(event) =>
+                    setStatus(event.target.value)
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500"
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">
+                    In Progress
+                  </option>
+                  <option value="resolved">Resolved</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Description
+                </label>
+
+                <textarea
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(event.target.value)
+                  }
+                  placeholder="Describe the vulnerability and its potential impact..."
+                  rows={5}
+                  className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 border-t border-slate-800 pt-6">
+              <button
+                type="button"
+                onClick={resetForm}
+                disabled={saving}
+                className="rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving
+                  ? editingVulnerability
+                    ? "Saving..."
+                    : "Creating..."
+                  : editingVulnerability
+                    ? "Save Changes"
+                    : "Create Vulnerability"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -229,7 +617,6 @@ function Vulnerabilities() {
             </div>
           ) : (
             <>
-              {/* Section Header */}
               <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/60 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-white">
@@ -254,9 +641,8 @@ function Vulnerabilities() {
                 </div>
               </div>
 
-              {/* Responsive Table */}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px] text-left text-sm">
+                <table className="w-full min-w-[1200px] text-left text-sm">
                   <thead className="border-b border-slate-800">
                     <tr>
                       <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -282,19 +668,24 @@ function Vulnerabilities() {
                       <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Discovered
                       </th>
+
+                      <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {vulnerabilities.map((vulnerability) => {
-                      const asset = getAsset(vulnerability.asset_id)
+                      const asset = getAsset(
+                        vulnerability.asset_id,
+                      )
 
                       return (
                         <tr
                           key={vulnerability.id}
                           className="group border-b border-slate-800/80 transition duration-200 last:border-b-0 hover:bg-slate-800/30"
                         >
-                          {/* Vulnerability */}
                           <td className="px-6 py-5">
                             <div className="flex items-start gap-3">
                               <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10">
@@ -307,7 +698,8 @@ function Vulnerabilities() {
                                 </p>
 
                                 <p className="mt-1 text-xs text-slate-500">
-                                  {vulnerability.cve_id || "No CVE assigned"}
+                                  {vulnerability.cve_id ||
+                                    "No CVE assigned"}
                                 </p>
 
                                 <p className="mt-1.5 max-w-sm truncate text-xs text-slate-600">
@@ -318,7 +710,6 @@ function Vulnerabilities() {
                             </div>
                           </td>
 
-                          {/* Asset */}
                           <td className="px-6 py-5">
                             <p className="font-medium text-slate-200">
                               {asset?.name ||
@@ -331,7 +722,6 @@ function Vulnerabilities() {
                             </p>
                           </td>
 
-                          {/* Severity */}
                           <td className="px-6 py-5">
                             <span
                               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold capitalize ${getSeverityStyle(
@@ -344,12 +734,13 @@ function Vulnerabilities() {
                             </span>
                           </td>
 
-                          {/* CVSS */}
                           <td className="px-6 py-5">
                             {vulnerability.cvss_score !== null ? (
                               <div className="flex items-center gap-2">
                                 <span className="font-mono text-sm font-semibold text-white">
-                                  {vulnerability.cvss_score.toFixed(1)}
+                                  {vulnerability.cvss_score.toFixed(
+                                    1,
+                                  )}
                                 </span>
 
                                 <span className="text-[10px] uppercase tracking-wider text-slate-600">
@@ -363,7 +754,6 @@ function Vulnerabilities() {
                             )}
                           </td>
 
-                          {/* Status */}
                           <td className="px-6 py-5">
                             <span
                               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium capitalize ${getStatusStyle(
@@ -379,7 +769,6 @@ function Vulnerabilities() {
                             </span>
                           </td>
 
-                          {/* Discovered */}
                           <td className="whitespace-nowrap px-6 py-5">
                             <p className="text-xs font-medium text-slate-300">
                               {new Date(
@@ -393,6 +782,49 @@ function Vulnerabilities() {
                               ).toLocaleTimeString()}
                             </p>
                           </td>
+
+                          <td className="px-6 py-5">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedVulnerability(
+                                    vulnerability,
+                                  )
+                                }
+                                className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-blue-400"
+                              >
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  startEditing(vulnerability)
+                                }
+                                className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-400"
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  deletingId ===
+                                  vulnerability.id
+                                }
+                                onClick={() =>
+                                  handleDelete(vulnerability)
+                                }
+                                className="rounded-md border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingId ===
+                                vulnerability.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}
@@ -401,6 +833,124 @@ function Vulnerabilities() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* View Modal */}
+      {selectedVulnerability && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-red-400">
+                  Vulnerability Details
+                </p>
+
+                <h3 className="mt-2 text-2xl font-bold text-white">
+                  {selectedVulnerability.title}
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Finding #{selectedVulnerability.id}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedVulnerability(null)
+                }
+                className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Asset
+                </p>
+
+                <p className="mt-1 text-sm text-white">
+                  {getAsset(
+                    selectedVulnerability.asset_id,
+                  )?.name ||
+                    `Asset #${selectedVulnerability.asset_id}`}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  CVE ID
+                </p>
+
+                <p className="mt-1 text-sm text-white">
+                  {selectedVulnerability.cve_id || "—"}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Severity
+                </p>
+
+                <p className="mt-1 text-sm capitalize text-white">
+                  {selectedVulnerability.severity}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  CVSS Score
+                </p>
+
+                <p className="mt-1 text-sm text-white">
+                  {selectedVulnerability.cvss_score !== null
+                    ? `${selectedVulnerability.cvss_score.toFixed(
+                        1,
+                      )} / 10`
+                    : "Not scored"}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Status
+                </p>
+
+                <p className="mt-1 text-sm capitalize text-white">
+                  {selectedVulnerability.status.replaceAll(
+                    "_",
+                    " ",
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Discovered
+                </p>
+
+                <p className="mt-1 text-sm text-white">
+                  {new Date(
+                    selectedVulnerability.discovered_at,
+                  ).toLocaleString()}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 sm:col-span-2">
+                <p className="text-xs text-slate-500">
+                  Description
+                </p>
+
+                <p className="mt-1 text-sm leading-6 text-slate-300">
+                  {selectedVulnerability.description ||
+                    "No description provided."}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
