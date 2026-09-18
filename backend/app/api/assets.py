@@ -27,18 +27,22 @@ def create_asset(
     if asset_data.owner_id is not None:
         owner = (
             db.query(User)
-            .filter(User.id == asset_data.owner_id)
+            .filter(
+                User.id == asset_data.owner_id,
+                User.organization_id == current_user.organization_id,
+            )
             .first()
         )
 
         if not owner:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset owner not found",
+                detail="Asset owner not found in your organization",
             )
 
     new_asset = Asset(
         **asset_data.model_dump(),
+        organization_id=current_user.organization_id,
     )
 
     db.add(new_asset)
@@ -47,6 +51,7 @@ def create_asset(
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="create",
         entity_type="asset",
         entity_id=new_asset.id,
@@ -69,6 +74,9 @@ def get_assets(
 ):
     assets = (
         db.query(Asset)
+        .filter(
+            Asset.organization_id == current_user.organization_id
+        )
         .order_by(Asset.id.desc())
         .all()
     )
@@ -87,7 +95,10 @@ def get_asset(
 ):
     asset = (
         db.query(Asset)
-        .filter(Asset.id == asset_id)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -112,7 +123,10 @@ def update_asset(
 ):
     asset = (
         db.query(Asset)
-        .filter(Asset.id == asset_id)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -125,14 +139,17 @@ def update_asset(
     if asset_data.owner_id is not None:
         owner = (
             db.query(User)
-            .filter(User.id == asset_data.owner_id)
+            .filter(
+                User.id == asset_data.owner_id,
+                User.organization_id == current_user.organization_id,
+            )
             .first()
         )
 
         if not owner:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset owner not found",
+                detail="Asset owner not found in your organization",
             )
 
     update_data = asset_data.model_dump(exclude_unset=True)
@@ -145,6 +162,7 @@ def update_asset(
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="update",
         entity_type="asset",
         entity_id=asset.id,
@@ -168,7 +186,10 @@ def delete_asset(
 ):
     asset = (
         db.query(Asset)
-        .filter(Asset.id == asset_id)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -183,6 +204,7 @@ def delete_asset(
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="delete",
         entity_type="asset",
         entity_id=asset.id,

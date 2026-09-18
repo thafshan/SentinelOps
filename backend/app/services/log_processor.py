@@ -1,5 +1,11 @@
 from datetime import datetime
 
+from sqlalchemy.orm import Session
+
+from app.models.asset import Asset
+from app.models.security_event import SecurityEvent
+from app.services.audit import create_audit_log
+
 
 EVENT_SEVERITY = {
     "FAILED_LOGIN": "medium",
@@ -30,7 +36,8 @@ def parse_security_log(log_line: str) -> dict:
         )
     except ValueError as exc:
         raise ValueError(
-            "Invalid timestamp format. Expected: YYYY-MM-DD HH:MM:SS"
+            "Invalid timestamp format. Expected: "
+            "YYYY-MM-DD HH:MM:SS"
         ) from exc
 
     event_type = event_type.upper()
@@ -54,28 +61,26 @@ def parse_security_log(log_line: str) -> dict:
         "message": message,
     }
 
-from sqlalchemy.orm import Session
-
-from app.models.asset import Asset
-from app.models.security_event import SecurityEvent
-from app.models.user import User
-from app.services.audit import create_audit_log
 
 def process_security_log(
     db: Session,
     asset_id: int,
     log_line: str,
+    organization_id: int,
     user_id: int | None = None,
 ) -> SecurityEvent:
     asset = (
         db.query(Asset)
-        .filter(Asset.id == asset_id)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == organization_id,
+        )
         .first()
     )
 
     if not asset:
         raise ValueError(
-            f"Asset with ID {asset_id} does not exist"
+            f"Asset with ID {asset_id} does not exist in your organization"
         )
 
     parsed_event = parse_security_log(log_line)
@@ -96,13 +101,14 @@ def process_security_log(
     create_audit_log(
         db=db,
         user_id=user_id,
+        organization_id=organization_id,
         action="create",
         entity_type="security_event",
         entity_id=security_event.id,
         description=(
             f"Created security event "
-            f"'{security_event.event_type}' from "
-            f"{security_event.source_ip}."
+            f"'{security_event.event_type}' "
+            f"from {security_event.source_ip}."
         ),
     )
 

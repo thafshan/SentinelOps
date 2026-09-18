@@ -50,6 +50,12 @@ class Asset(Base):
         default="active",
     )
 
+
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id"),
+        nullable=False,
+    )
+
     owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
         nullable=True,
@@ -59,6 +65,8 @@ class Asset(Base):
         Text,
         nullable=True,
     )
+
+
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

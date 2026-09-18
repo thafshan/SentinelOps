@@ -10,6 +10,7 @@ import Incidents from "./pages/Incidents"
 import AuditLogs from "./pages/AuditLogs"
 import LogProcessor from "./pages/LogProcessor"
 import ProtectedRoute from "./components/ProtectedRoute"
+import Register from "./pages/Register"
 
 
 
@@ -78,6 +79,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
 
       <Route element={<ProtectedRoute />}>
         <Route path="/*" element={<AppLayout />} />

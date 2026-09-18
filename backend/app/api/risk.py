@@ -9,6 +9,7 @@ from app.services.risk import (
     calculate_risk_overview,
 )
 
+
 router = APIRouter(
     prefix="/risk",
     tags=["Risk Intelligence"],
@@ -23,7 +24,10 @@ def get_asset_risk(
 ):
     asset = (
         db.query(Asset)
-        .filter(Asset.id == asset_id)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -36,6 +40,7 @@ def get_asset_risk(
     return calculate_asset_risk(
         db=db,
         asset_id=asset_id,
+        organization_id=current_user.organization_id,
     )
 
 
@@ -46,4 +51,6 @@ def get_risk_overview(
 ):
     return calculate_risk_overview(
         db=db,
+        organization_id=current_user.organization_id,
     )
+

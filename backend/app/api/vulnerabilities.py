@@ -31,36 +31,43 @@ def create_vulnerability(
 ):
     asset = (
         db.query(Asset)
-        .filter(Asset.id == vulnerability_data.asset_id)
+        .filter(
+            Asset.id == vulnerability_data.asset_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found",
+            detail="Asset not found in your organization",
         )
 
-    vulnerability = Vulnerability(
-        **vulnerability_data.model_dump(exclude_none=True)
+    new_vulnerability = Vulnerability(
+        **vulnerability_data.model_dump()
     )
 
-    db.add(vulnerability)
+    db.add(new_vulnerability)
     db.flush()
 
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="create",
         entity_type="vulnerability",
-        entity_id=vulnerability.id,
-        description=f"Created vulnerability '{vulnerability.title}'.",
+        entity_id=new_vulnerability.id,
+        description=(
+            f"Created vulnerability '{new_vulnerability.title}' "
+            f"for asset '{asset.name}'."
+        ),
     )
 
     db.commit()
-    db.refresh(vulnerability)
+    db.refresh(new_vulnerability)
 
-    return vulnerability
+    return new_vulnerability
 
 
 @router.get(
@@ -73,6 +80,10 @@ def get_vulnerabilities(
 ):
     vulnerabilities = (
         db.query(Vulnerability)
+        .join(Asset, Vulnerability.asset_id == Asset.id)
+        .filter(
+            Asset.organization_id == current_user.organization_id
+        )
         .order_by(Vulnerability.id.desc())
         .all()
     )
@@ -91,7 +102,11 @@ def get_vulnerability(
 ):
     vulnerability = (
         db.query(Vulnerability)
-        .filter(Vulnerability.id == vulnerability_id)
+        .join(Asset, Vulnerability.asset_id == Asset.id)
+        .filter(
+            Vulnerability.id == vulnerability_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -116,7 +131,11 @@ def update_vulnerability(
 ):
     vulnerability = (
         db.query(Vulnerability)
-        .filter(Vulnerability.id == vulnerability_id)
+        .join(Asset, Vulnerability.asset_id == Asset.id)
+        .filter(
+            Vulnerability.id == vulnerability_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -126,19 +145,24 @@ def update_vulnerability(
             detail="Vulnerability not found",
         )
 
-    update_data = vulnerability_data.model_dump(exclude_unset=True)
+    update_data = vulnerability_data.model_dump(
+        exclude_unset=True
+    )
 
     if "asset_id" in update_data:
         asset = (
             db.query(Asset)
-            .filter(Asset.id == update_data["asset_id"])
+            .filter(
+                Asset.id == update_data["asset_id"],
+                Asset.organization_id == current_user.organization_id,
+            )
             .first()
         )
 
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset not found",
+                detail="Target asset not found in your organization",
             )
 
     for field, value in update_data.items():
@@ -149,10 +173,13 @@ def update_vulnerability(
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="update",
         entity_type="vulnerability",
         entity_id=vulnerability.id,
-        description=f"Updated vulnerability '{vulnerability.title}'.",
+        description=(
+            f"Updated vulnerability '{vulnerability.title}'."
+        ),
     )
 
     db.commit()
@@ -172,7 +199,11 @@ def delete_vulnerability(
 ):
     vulnerability = (
         db.query(Vulnerability)
-        .filter(Vulnerability.id == vulnerability_id)
+        .join(Asset, Vulnerability.asset_id == Asset.id)
+        .filter(
+            Vulnerability.id == vulnerability_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -183,14 +214,18 @@ def delete_vulnerability(
         )
 
     vulnerability_title = vulnerability.title
+    vulnerability_id_value = vulnerability.id
 
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="delete",
         entity_type="vulnerability",
-        entity_id=vulnerability.id,
-        description=f"Deleted vulnerability '{vulnerability_title}'.",
+        entity_id=vulnerability_id_value,
+        description=(
+            f"Deleted vulnerability '{vulnerability_title}'."
+        ),
     )
 
     db.delete(vulnerability)

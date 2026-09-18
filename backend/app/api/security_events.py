@@ -31,36 +31,43 @@ def create_security_event(
 ):
     asset = (
         db.query(Asset)
-        .filter(Asset.id == event_data.asset_id)
+        .filter(
+            Asset.id == event_data.asset_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found",
+            detail="Asset not found in your organization",
         )
 
-    event = SecurityEvent(
-        **event_data.model_dump(exclude_none=True)
+    new_event = SecurityEvent(
+        **event_data.model_dump()
     )
 
-    db.add(event)
+    db.add(new_event)
     db.flush()
 
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="create",
         entity_type="security_event",
-        entity_id=event.id,
-        description=f"Created security event '{event.event_type}'.",
+        entity_id=new_event.id,
+        description=(
+            f"Created security event '{new_event.event_type}' "
+            f"for asset '{asset.name}'."
+        ),
     )
 
     db.commit()
-    db.refresh(event)
+    db.refresh(new_event)
 
-    return event
+    return new_event
 
 
 @router.get(
@@ -73,6 +80,10 @@ def get_security_events(
 ):
     events = (
         db.query(SecurityEvent)
+        .join(Asset, SecurityEvent.asset_id == Asset.id)
+        .filter(
+            Asset.organization_id == current_user.organization_id
+        )
         .order_by(SecurityEvent.id.desc())
         .all()
     )
@@ -91,7 +102,11 @@ def get_security_event(
 ):
     event = (
         db.query(SecurityEvent)
-        .filter(SecurityEvent.id == event_id)
+        .join(Asset, SecurityEvent.asset_id == Asset.id)
+        .filter(
+            SecurityEvent.id == event_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -116,7 +131,11 @@ def update_security_event(
 ):
     event = (
         db.query(SecurityEvent)
-        .filter(SecurityEvent.id == event_id)
+        .join(Asset, SecurityEvent.asset_id == Asset.id)
+        .filter(
+            SecurityEvent.id == event_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -126,19 +145,24 @@ def update_security_event(
             detail="Security event not found",
         )
 
-    update_data = event_data.model_dump(exclude_unset=True)
+    update_data = event_data.model_dump(
+        exclude_unset=True
+    )
 
     if "asset_id" in update_data:
         asset = (
             db.query(Asset)
-            .filter(Asset.id == update_data["asset_id"])
+            .filter(
+                Asset.id == update_data["asset_id"],
+                Asset.organization_id == current_user.organization_id,
+            )
             .first()
         )
 
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset not found",
+                detail="Target asset not found in your organization",
             )
 
     for field, value in update_data.items():
@@ -149,10 +173,13 @@ def update_security_event(
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="update",
         entity_type="security_event",
         entity_id=event.id,
-        description=f"Updated security event '{event.event_type}'.",
+        description=(
+            f"Updated security event '{event.event_type}'."
+        ),
     )
 
     db.commit()
@@ -172,7 +199,11 @@ def delete_security_event(
 ):
     event = (
         db.query(SecurityEvent)
-        .filter(SecurityEvent.id == event_id)
+        .join(Asset, SecurityEvent.asset_id == Asset.id)
+        .filter(
+            SecurityEvent.id == event_id,
+            Asset.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
@@ -183,14 +214,18 @@ def delete_security_event(
         )
 
     event_type = event.event_type
+    event_id_value = event.id
 
     create_audit_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         action="delete",
         entity_type="security_event",
-        entity_id=event.id,
-        description=f"Deleted security event '{event_type}'.",
+        entity_id=event_id_value,
+        description=(
+            f"Deleted security event '{event_type}'."
+        ),
     )
 
     db.delete(event)

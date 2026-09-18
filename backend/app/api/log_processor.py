@@ -39,6 +39,7 @@ def process_log(
             db=db,
             asset_id=log_data.asset_id,
             log_line=log_data.log_line,
+            organization_id=current_user.organization_id,
             user_id=current_user.id,
         )
 

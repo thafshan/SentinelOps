@@ -7,9 +7,9 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.auth import UserLogin, UserRegister
-
 
 router = APIRouter(
     prefix="/auth",
@@ -34,10 +34,19 @@ def register_user(
             detail="Email is already registered",
         )
 
+    organization = Organization(
+        name=user_data.organization_name,
+    )
+
+    db.add(organization)
+    db.flush()
+
     new_user = User(
         email=user_data.email,
         password_hash=hash_password(user_data.password),
         full_name=user_data.full_name,
+        role="admin",
+        organization_id=organization.id,
     )
 
     db.add(new_user)
@@ -50,6 +59,8 @@ def register_user(
         "email": new_user.email,
         "full_name": new_user.full_name,
         "role": new_user.role,
+        "organization_id": organization.id,
+        "organization_name": organization.name,
     }
 
 
@@ -92,7 +103,10 @@ def login_user(
         "email": user.email,
         "full_name": user.full_name,
         "role": user.role,
+        "organization_id": user.organization_id,
+        "organization_name": user.organization.name,
     }
+
 
 @router.get("/me")
 def get_my_profile(
@@ -104,4 +118,7 @@ def get_my_profile(
         "full_name": current_user.full_name,
         "role": current_user.role,
         "is_active": current_user.is_active,
+        "organization_id": current_user.organization_id,
+        "organization_name": current_user.organization.name,
     }
+

@@ -19,6 +19,11 @@ class AuditLog(Base):
         nullable=True,
     )
 
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id"),
+        nullable=False,
+    )
+
     action: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -52,5 +57,10 @@ class AuditLog(Base):
 
     user = relationship(
         "User",
+        backref="audit_logs",
+    )
+
+    organization = relationship(
+        "Organization",
         backref="audit_logs",
     )

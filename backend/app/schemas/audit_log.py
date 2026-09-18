@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 class AuditLogBase(BaseModel):
     user_id: int | None = None
+    organization_id: int
     action: str
     entity_type: str
     entity_id: int | None = None
@@ -21,3 +22,4 @@ class AuditLogResponse(AuditLogBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+

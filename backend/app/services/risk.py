@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.models.asset import Asset
 from app.models.incident import Incident
 from app.models.security_event import SecurityEvent
-from app.models.user import User
 from app.models.vulnerability import Vulnerability
 
 
@@ -52,10 +51,14 @@ def get_risk_level(risk_score: int) -> str:
 def calculate_asset_risk(
     db: Session,
     asset_id: int,
+    organization_id: int,
 ) -> dict:
     asset = (
         db.query(Asset)
-        .filter(Asset.id == asset_id)
+        .filter(
+            Asset.id == asset_id,
+            Asset.organization_id == organization_id,
+        )
         .first()
     )
 
@@ -71,19 +74,25 @@ def calculate_asset_risk(
 
     vulnerabilities = (
         db.query(Vulnerability)
-        .filter(Vulnerability.asset_id == asset_id)
+        .filter(
+            Vulnerability.asset_id == asset_id,
+        )
         .all()
     )
 
     security_events = (
         db.query(SecurityEvent)
-        .filter(SecurityEvent.asset_id == asset_id)
+        .filter(
+            SecurityEvent.asset_id == asset_id,
+        )
         .all()
     )
 
     incidents = (
         db.query(Incident)
-        .filter(Incident.asset_id == asset_id)
+        .filter(
+            Incident.asset_id == asset_id,
+        )
         .all()
     )
 
@@ -158,45 +167,72 @@ def calculate_asset_risk(
     }
 
 
-def calculate_risk_overview(db: Session) -> dict:
-    assets = db.query(Asset).all()
+def calculate_risk_overview(
+    db: Session,
+    organization_id: int,
+) -> dict:
+    assets = (
+        db.query(Asset)
+        .filter(
+            Asset.organization_id == organization_id,
+        )
+        .all()
+    )
 
     total_assets = len(assets)
     critical_assets = 0
     total_risk_score = 0
 
-    open_vulnerabilities = 0
-    active_security_events = 0
-    open_incidents = 0
+    open_vulnerabilities = (
+        db.query(Vulnerability)
+        .join(
+            Asset,
+            Vulnerability.asset_id == Asset.id,
+        )
+        .filter(
+            Asset.organization_id == organization_id,
+            Vulnerability.status != "resolved",
+        )
+        .count()
+    )
+
+    active_security_events = (
+        db.query(SecurityEvent)
+        .join(
+            Asset,
+            SecurityEvent.asset_id == Asset.id,
+        )
+        .filter(
+            Asset.organization_id == organization_id,
+            SecurityEvent.status != "resolved",
+        )
+        .count()
+    )
+
+    open_incidents = (
+        db.query(Incident)
+        .join(
+            Asset,
+            Incident.asset_id == Asset.id,
+        )
+        .filter(
+            Asset.organization_id == organization_id,
+            Incident.status != "resolved",
+        )
+        .count()
+    )
 
     for asset in assets:
         asset_risk = calculate_asset_risk(
             db=db,
             asset_id=asset.id,
+            organization_id=organization_id,
         )
 
         total_risk_score += asset_risk["risk_score"]
 
         if asset_risk["risk_level"] == "critical":
             critical_assets += 1
-
-    vulnerabilities = db.query(Vulnerability).all()
-
-    for vulnerability in vulnerabilities:
-        if vulnerability.status.lower() != "resolved":
-            open_vulnerabilities += 1
-
-    security_events = db.query(SecurityEvent).all()
-
-    for event in security_events:
-        if event.status.lower() != "resolved":
-            active_security_events += 1
-
-    incidents = db.query(Incident).all()
-
-    for incident in incidents:
-        if incident.status.lower() != "resolved":
-            open_incidents += 1
 
     if total_assets > 0:
         overall_risk_score = round(
@@ -214,3 +250,4 @@ def calculate_risk_overview(db: Session) -> dict:
         "active_security_events": active_security_events,
         "open_incidents": open_incidents,
     }
+

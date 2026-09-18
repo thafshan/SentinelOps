@@ -23,6 +23,9 @@ def get_audit_logs(
 ):
     audit_logs = (
         db.query(AuditLog)
+        .filter(
+            AuditLog.organization_id == current_user.organization_id
+        )
         .order_by(AuditLog.id.desc())
         .all()
     )
@@ -41,7 +44,10 @@ def get_audit_log(
 ):
     audit_log = (
         db.query(AuditLog)
-        .filter(AuditLog.id == audit_log_id)
+        .filter(
+            AuditLog.id == audit_log_id,
+            AuditLog.organization_id == current_user.organization_id,
+        )
         .first()
     )
 
